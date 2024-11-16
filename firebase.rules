@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isCompanyMember(companyId) {
+      return getUserData().companyId == companyId;
+    }
+    
+    function hasRole(role) {
+      return getUserData().role == role;
+    }
+    
+    function isAdmin() {
+      return hasRole('admin');
+    }
+    
+    function isManager() {
+      return hasRole('manager') || isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId || 
+        (isCompanyMember(resource.data.companyId) && isManager())
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId ||
+        (isCompanyMember(resource.data.companyId) && isAdmin())
+      );
+      allow delete: if isSignedIn() && isAdmin() && 
+        isCompanyMember(resource.data.companyId);
+    }
+
+    // Companies collection
+    match /companies/{companyId} {
+      allow read: if isSignedIn() && isCompanyMember(companyId);
+      allow create: if isSignedIn() && request.resource.data.users[0] == request.auth.uid;
+      allow update: if isSignedIn() && isCompanyMember(companyId) && isAdmin();
+      allow delete: if isSignedIn() && isCompanyMember(companyId) && isAdmin();
+    }
+
+    // Invites collection
+    match /invites/{inviteId} {
+      allow read: if isSignedIn() && (
+        resource.data.email == getUserData().email ||
+        isCompanyMember(resource.data.companyId)
+      );
+      allow create: if isSignedIn() && 
+        isCompanyMember(request.resource.data.companyId) && 
+        isManager();
+      allow update: if isSignedIn() && (
+        resource.data.email == request.auth.token.email ||
+        (isCompanyMember(resource.data.companyId) && isManager())
+      );
+      allow delete: if isSignedIn() && 
+        isCompanyMember(resource.data.companyId) && 
+        isManager();
+    }
+
+    // Clients collection
+    match /clients/{clientId} {
+      allow read: if isSignedIn() && isCompanyMember(resource.data.companyId);
+      allow create: if isSignedIn() && 
+        isCompanyMember(request.resource.data.companyId) && 
+        isAdmin();
+      allow update: if isSignedIn() && 
+        isCompanyMember(resource.data.companyId) && 
+        isAdmin();
+      allow delete: if isSignedIn() && 
+        isCompanyMember(resource.data.companyId) && 
+        isAdmin();
+    }
+
+    // Projects collection
+    match /projects/{projectId} {
+      allow read: if isSignedIn() && isCompanyMember(resource.data.companyId);
+      allow create: if isSignedIn() && 
+        isCompanyMember(request.resource.data.companyId) && 
+        isAdmin();
+      allow update: if isSignedIn() && 
+        isCompanyMember(resource.data.companyId) && 
+        isAdmin();
+      allow delete: if isSignedIn() && 
+        isCompanyMember(resource.data.companyId) && 
+        isAdmin();
+    }
+
+    // Time Entries collection
+    match /timeEntries/{entryId} {
+      function isEntryOwner() {
+        return request.auth.uid == resource.data.userId;
+      }
+      
+      function canManageEntry() {
+        return isManager() && isCompanyMember(resource.data.companyId);
+      }
+      
+      function isValidTimeEntry() {
+        let data = request.resource.data;
+        return data.duration > 0 && 
+               data.duration <= 1440 && // Max 24 hours in minutes
+               data.projectId != null &&
+               data.date != null &&
+               data.companyId != null &&
+               data.userId != null;
+      }
+
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.userId ||
+        (isCompanyMember(resource.data.companyId) && isManager())
+      );
+      
+      allow create: if isSignedIn() && 
+        isCompanyMember(request.resource.data.companyId) &&
+        request.resource.data.userId == request.auth.uid &&
+        isValidTimeEntry();
+      
+      allow update: if isSignedIn() && (
+        isEntryOwner() || canManageEntry()
+      ) && isValidTimeEntry();
+      
+      allow delete: if isSignedIn() && (
+        isEntryOwner() || canManageEntry()
+      );
+    }
+  }
+}
