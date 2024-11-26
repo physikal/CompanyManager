@@ -41,50 +41,56 @@ export function WeeklyView({ weekDays, existingEntries, onSuccess, onError }: We
   const [loading, setLoading] = useState(false);
   const [expandedRows, setExpandedRows] = useState<number[]>([0]);
 
-  // Group existing entries by project
-  const entriesByProject = existingEntries.reduce((acc, entry) => {
-    if (!acc[entry.projectId]) {
-      acc[entry.projectId] = [];
-    }
-    acc[entry.projectId].push(entry);
-    return acc;
-  }, {} as Record<string, TimeEntry[]>);
-
   // Initialize form with existing entries
-  const defaultValues: WeeklyEntryFormData = {
-    entries: Object.keys(entriesByProject).length > 0 
-      ? Object.entries(entriesByProject).map(([projectId, entries]) => ({
-          projectId,
-          hours: weekDays.reduce((acc, day) => {
-            const dateKey = day.toISOString().split('T')[0];
-            const entry = entries.find(e => 
-              e.date.toISOString().split('T')[0] === dateKey
-            );
-            acc[dateKey] = {
-              duration: entry ? minutesToHoursAndMinutes(entry.duration) : '',
-              description: entry?.description || '',
-            };
-            return acc;
-          }, {} as { [key: string]: { duration: string; description: string } }),
-        }))
-      : [{
-          projectId: '',
-          hours: weekDays.reduce((acc, day) => {
-            const dateKey = day.toISOString().split('T')[0];
-            acc[dateKey] = { duration: '', description: '' };
-            return acc;
-          }, {} as { [key: string]: { duration: string; description: string } }),
-        }],
-  };
+  const defaultValues = React.useMemo(() => {
+    const entriesByProject = existingEntries.reduce((acc, entry) => {
+      if (!acc[entry.projectId]) {
+        acc[entry.projectId] = [];
+      }
+      acc[entry.projectId].push(entry);
+      return acc;
+    }, {} as Record<string, TimeEntry[]>);
 
-  const { control, handleSubmit, reset } = useForm<WeeklyEntryFormData>({
+    return {
+      entries: Object.keys(entriesByProject).length > 0
+        ? Object.entries(entriesByProject).map(([projectId, entries]) => ({
+            projectId,
+            hours: weekDays.reduce((acc, day) => {
+              const dateKey = day.toISOString().split('T')[0];
+              const entry = entries.find(e => 
+                e.date.toISOString().split('T')[0] === dateKey
+              );
+              acc[dateKey] = {
+                duration: entry ? minutesToHoursAndMinutes(entry.duration) : '',
+                description: entry?.description || '',
+              };
+              return acc;
+            }, {} as Record<string, { duration: string; description: string }>),
+          }))
+        : [{
+            projectId: '',
+            hours: weekDays.reduce((acc, day) => {
+              const dateKey = day.toISOString().split('T')[0];
+              acc[dateKey] = { duration: '', description: '' };
+              return acc;
+            }, {} as Record<string, { duration: string; description: string }>),
+          }],
+    };
+  }, [existingEntries, weekDays]);
+
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { isDirty }
+  } = useForm<WeeklyEntryFormData>({
     defaultValues,
   });
 
-  // Reset form when existingEntries changes
+  // Reset form when entries or week changes
   useEffect(() => {
     reset(defaultValues);
-  }, [existingEntries]);
+  }, [defaultValues, reset]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -261,7 +267,7 @@ export function WeeklyView({ weekDays, existingEntries, onSuccess, onError }: We
           Add Project Line
         </Button>
 
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading || !isDirty}>
           {loading ? 'Saving...' : 'Save All Entries'}
         </Button>
       </div>

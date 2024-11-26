@@ -21,24 +21,27 @@ export function useTimeEntries(startDate?: Date, endDate?: Date, userId?: string
     }
 
     try {
-      // Base query with company filter
-      let queryConstraints = [
-        where('companyId', '==', company.id)
-      ];
+      // Base query constraints
+      const queryConstraints = [where('companyId', '==', company.id)];
 
-      // Add user filter if not a manager or if specific userId is requested
+      // Add user filter
       if (userId) {
         queryConstraints.push(where('userId', '==', userId));
       } else if (!isManager) {
         queryConstraints.push(where('userId', '==', user.uid));
       }
 
-      // Add date range filters if provided
+      // Add date range filters
       if (startDate) {
-        queryConstraints.push(where('date', '>=', startDate));
+        const startOfDay = new Date(startDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        queryConstraints.push(where('date', '>=', Timestamp.fromDate(startOfDay)));
       }
+      
       if (endDate) {
-        queryConstraints.push(where('date', '<=', endDate));
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        queryConstraints.push(where('date', '<=', Timestamp.fromDate(endOfDay)));
       }
 
       // Add ordering
@@ -49,16 +52,26 @@ export function useTimeEntries(startDate?: Date, endDate?: Date, userId?: string
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const timeEntryData = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-            date: doc.data().date?.toDate(),
-            createdAt: doc.data().createdAt?.toDate(),
-            updatedAt: doc.data().updatedAt?.toDate(),
-            approvedAt: doc.data().approvedAt?.toDate(),
-          })) as TimeEntry[];
+          const timeEntryData = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              date: data.date?.toDate(),
+              createdAt: data.createdAt?.toDate(),
+              updatedAt: data.updatedAt?.toDate(),
+              approvedAt: data.approvedAt?.toDate(),
+              duration: Number(data.duration),
+              description: data.description || '',
+              status: data.status || 'draft',
+              projectId: data.projectId,
+              userId: data.userId,
+              companyId: data.companyId,
+              createdBy: data.createdBy,
+              updatedBy: data.updatedBy,
+            } as TimeEntry;
+          });
 
-          console.log('Fetched time entries:', timeEntryData); // Debug log
           setEntries(timeEntryData);
           setError(null);
           setLoading(false);
@@ -76,7 +89,7 @@ export function useTimeEntries(startDate?: Date, endDate?: Date, userId?: string
       setError('Failed to initialize time entries');
       setLoading(false);
     }
-  }, [user, company, startDate, endDate, userId, isManager]);
+  }, [user?.uid, company?.id, startDate?.getTime(), endDate?.getTime(), userId, isManager]);
 
   return { entries, loading, error };
 }

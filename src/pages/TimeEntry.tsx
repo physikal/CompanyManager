@@ -16,7 +16,7 @@ export function TimeEntry() {
   const weekStart = weekDays[0];
   const weekEnd = weekDays[weekDays.length - 1];
   
-  const { entries, loading: entriesLoading } = useTimeEntries(weekStart, weekEnd);
+  const { entries, loading: entriesLoading, error: entriesError } = useTimeEntries(weekStart, weekEnd);
   const { currentPeriod } = usePayPeriod();
 
   const handlePreviousWeek = () => {
@@ -79,10 +79,16 @@ export function TimeEntry() {
           </div>
         )}
 
+        {entriesError && (
+          <div className="mb-4 rounded-md bg-yellow-50 p-4">
+            <div className="text-sm text-yellow-700">{entriesError}</div>
+          </div>
+        )}
+
         <div className="bg-white shadow sm:rounded-lg">
           <div className="px-4 py-5 sm:p-6">
             {entriesLoading ? (
-              <div className="text-center py-4">Loading...</div>
+              <div className="text-center py-4">Loading time entries...</div>
             ) : (
               <WeeklyView
                 weekDays={weekDays}
